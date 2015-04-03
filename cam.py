@@ -293,7 +293,9 @@ buttons = [
    Button((0, 53,320, 80), bg='empty')],     # 'Empty' message
 
   # Screen mode 3 is viewfinder / snapshot
-  [Button((  0,188,156, 52), bg='gear', cb=viewCallback, value=0),
+  [      Button((  0, 70, 80, 52), bg='prev', cb=fxCallback     , value=-1),
+         Button((240, 70, 80, 52), bg='next', cb=fxCallback     , value= 1),
+      Button((  0,188,156, 52), bg='gear', cb=viewCallback, value=0),
    Button((164,188,156, 52), bg='play', cb=viewCallback, value=1),
    Button((  0,  0,320,240)           , cb=viewCallback, value=2),
    Button(( 88, 51,157,102)),  # 'Working' label (when enabled)
@@ -411,26 +413,29 @@ def imgRange(path):
 	finally:
 	  return None if min > max else (min, max)
 
+workingLabel = Button(( 88, 51,157,102))  # 'Working' label (when enabled)
+workingSpinner=Button((148, 110,22, 22))
+
 # Busy indicator.  To use, run in separate thread, set global 'busy'
 # to False when done.
 def spinner():
 	global busy, screenMode, screenModePrior
 
-	buttons[screenMode][3].setBg('working')
-	buttons[screenMode][3].draw(screen)
+	workingLabel.setBg('working')
+	workingLabel.draw(screen)
 	pygame.display.update()
 
 	busy = True
 	n    = 0
 	while busy is True:
-	  buttons[screenMode][4].setBg('work-' + str(n))
-	  buttons[screenMode][4].draw(screen)
+	  workingSpinner.setBg('work-' + str(n))
+	  workingSpinner.draw(screen)
 	  pygame.display.update()
 	  n = (n + 1) % 5
 	  time.sleep(0.15)
 
-	buttons[screenMode][3].setBg(None)
-	buttons[screenMode][4].setBg(None)
+	workingLabel.setBg(None)
+	workingSpinner.setBg(None)
 	screenModePrior = -1 # Force refresh
 
 def takePicture():
@@ -475,6 +480,7 @@ def takePicture():
 	camera.resolution = sizeData[sizeMode][0]
 	camera.crop       = sizeData[sizeMode][2]
 	try:
+
 	  camera.capture(filename, use_video_port=False, format='jpeg',
 	    thumbnail=None)
 	  # Set image file ownership to pi user, mode to 644
@@ -594,18 +600,51 @@ for s in buttons:        # For each screenful of buttons...
 
 loadSettings() # Must come last; fiddles with Button/Icon states
 
-
+myButtons = [Button((  0, 70, 80, 52), bg='prev', cb=fxCallback     , value=-1),
+             Button((240, 70, 80, 52), bg='next', cb=fxCallback     , value= 1)]
+for b in myButtons:
+    for i in icons:
+        if b.bg== i.name:
+            b.iconBg=i
+            b.bg = None
+        if b.fg == i.name:
+            b.iconFg = i
+            b.fg= None
 # Main loop ----------------------------------------------------------------
 
+def takeMyPicture():
+    global busy
+
+    # If no buttons are selected we should really take the picture..
+    scaled = None
+    camera.resolution = sizeData[sizeMode][0]
+    camera.crop       = sizeData[sizeMode][2]
+    t = threading.Thread(target=spinner)
+    t.start()
+    camera.capture("test.jpg", use_video_port=False, format='jpeg',
+                   thumbnail=None)
+    busy=False
+    t.join()
+    camera.resolution = sizeData[sizeMode][1]
+    camera.crop       = (0.0, 0.0, 1.0, 1.0)
+
 while(True):
+
 
   # Process touchscreen input
   while True:
     for event in pygame.event.get():
       if(event.type is MOUSEBUTTONDOWN):
         pos = pygame.mouse.get_pos()
-        for b in buttons[screenMode]:
-          if b.selected(pos): break
+        selected=False
+        for b in myButtons:
+          if b.selected(pos):
+            selected=True
+            break
+        print selected
+        if not selected:
+          takeMyPicture()
+
     # If in viewfinder or settings modes, stop processing touchscreen
     # and refresh the display to show the live preview.  In other modes
     # (image playback, etc.), stop and refresh the screen only when
@@ -637,7 +676,7 @@ while(True):
        (240 - img.get_height()) / 2))
 
   # Overlay buttons on display and update
-  for i,b in enumerate(buttons[screenMode]):
+  for b in myButtons:
     b.draw(screen)
   pygame.display.update()
 
