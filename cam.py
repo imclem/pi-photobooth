@@ -133,16 +133,10 @@ def fxCallback(n): # Pass 1 (next effect) or -1 (prev effect)
 	setFxMode((fxMode + n) % len(fxData))
 
 # Global stuff -------------------------------------------------------------
-sizeMode        =  0      # Image size; default = Large
 fxMode          =  0      # Image effect; default = Normal
 iconPath        = 'icons' # Subdirectory containing UI bitmaps (PNG format)
 scaled          = None    # pygame Surface w/last-loaded image
-
-sizeData = [ # Camera parameters for different size settings
- # Full res      Viewfinder  Crop window
- [(2592, 1944), (320, 240), (0.0   , 0.0   , 1.0   , 1.0   )], # Large
- [(1920, 1080), (320, 180), (0.1296, 0.2222, 0.7408, 0.5556)], # Med
- [(1440, 1080), (320, 240), (0.2222, 0.2222, 0.5556, 0.5556)]] # Small
+sizeData = [(2592, 1944), (320, 240), (0.0   , 0.0   , 1.0   , 1.0   )] # Large
 
 # A fixed list of image effects is used (rather than polling
 # camera.IMAGE_EFFECTS) because the latter contains a few elements
@@ -213,7 +207,7 @@ screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
 # Init camera and set up default values
 camera            = picamera.PiCamera()
 atexit.register(camera.close)
-camera.resolution = sizeData[sizeMode][1]
+camera.resolution = sizeData[1]
 #camera.crop       = sizeData[sizeMode][2]
 camera.crop       = (0.0, 0.0, 1.0, 1.0)
 # Leave raw format at default YUV, don't touch, don't set to RGB!
@@ -241,15 +235,15 @@ def takeMyPicture():
 
     # If no buttons are selected we should really take the picture..
     scaled = None
-    camera.resolution = sizeData[sizeMode][0]
-    camera.crop       = sizeData[sizeMode][2]
+    camera.resolution = sizeData[0]
+    camera.crop       = sizeData[2]
     t = threading.Thread(target=spinner)
     t.start()
     camera.capture("test.jpg", use_video_port=False, format='jpeg',
                    thumbnail=None)
     busy=False
     t.join()
-    camera.resolution = sizeData[sizeMode][1]
+    camera.resolution = sizeData[1]
     camera.crop       = (0.0, 0.0, 1.0, 1.0)
 
 while(True):
@@ -274,11 +268,11 @@ while(True):
   stream.seek(0)
   stream.readinto(yuv)  # stream -> YUV buffer
   stream.close()
-  yuv2rgb.convert(yuv, rgb, sizeData[sizeMode][1][0],
-      sizeData[sizeMode][1][1])
+  yuv2rgb.convert(yuv, rgb, sizeData[1][0],
+      sizeData[1][1])
   img = pygame.image.frombuffer(rgb[0:
-      (sizeData[sizeMode][1][0] * sizeData[sizeMode][1][1] * 3)],
-      sizeData[sizeMode][1], 'RGB')
+      (sizeData[1][0] * sizeData[1][1] * 3)],
+      sizeData[1], 'RGB')
 
   if img is None or img.get_height() < 240: # Letterbox, clear background
     screen.fill(0)
