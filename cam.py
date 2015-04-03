@@ -78,21 +78,26 @@ class Icon:
 class Button:
 
 	def __init__(self, rect, **kwargs):
-	  self.rect     = rect # Bounds
-	  self.color    = None # Background fill color, if any
-	  self.iconBg   = None # Background Icon (atop color fill)
-	  self.iconFg   = None # Foreground Icon (atop background)
-	  self.bg       = None # Background Icon name
-	  self.fg       = None # Foreground Icon name
-	  self.callback = None # Callback function
-	  self.value    = None # Value passed to callback
+	  self.rect       = rect # Bounds
+	  self.color      = None # Background fill color, if any
+	  self.iconBg     = None # Background Icon (atop color fill)
+	  self.iconFg     = None # Foreground Icon (atop background)
+	  self.bg         = None # Background Icon name
+	  self.fg         = None # Foreground Icon name
+	  self.callback   = None # Callback function
+	  self.value      = None # Value passed to callback
+	  self.text       = None
+	  self.renderText = None
 	  for key, value in kwargs.iteritems():
 	    if   key == 'color': self.color    = value
 	    elif key == 'bg'   : self.bg       = value
 	    elif key == 'fg'   : self.fg       = value
 	    elif key == 'cb'   : self.callback = value
 	    elif key == 'value': self.value    = value
-
+	    elif key == 'text' : self.text     = value
+	  if self.text:
+	    font = pygame.font.SysFont("Arial",60)
+	    self.renderText=font.render(self.text, True, (255,255,255))
 	def selected(self, pos):
 	  x1 = self.rect[0]
 	  y1 = self.rect[1]
@@ -117,6 +122,11 @@ class Button:
 	    screen.blit(self.iconFg.bitmap,
 	      (self.rect[0]+(self.rect[2]-self.iconFg.bitmap.get_width())/2,
 	       self.rect[1]+(self.rect[3]-self.iconFg.bitmap.get_height())/2))
+	  if self.text:
+	    screen.blit(self.renderText,
+                    (self.rect[0]+(self.rect[2]-self.renderText.get_width())/2,
+                     self.rect[1]+(self.rect[3]-self.renderText.get_height())/2))
+
 
 	def setBg(self, name):
 	  if name is None:
@@ -180,6 +190,7 @@ def spinner():
 	workingLabel.setBg(None)
 	workingSpinner.setBg(None)
 
+
 # Initialization -----------------------------------------------------------
 
 # Init framebuffer/touchscreen environment variables
@@ -203,6 +214,23 @@ yuv = bytearray(320 * 240 * 3 / 2)
 pygame.init()
 pygame.mouse.set_visible(False)
 screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
+
+timerDisplays = [Button(( 88, 51,157,102),text="5"),
+                 Button(( 88, 51,157,102),text="4"),
+                 Button(( 88, 51,157,102),text="3"),
+                 Button(( 88, 51,157,102),text="2"),
+                 Button(( 88, 51,157,102),text="1")]
+
+timerToDisplay = None
+
+def fiveSecs():
+    global timerToDisplay,timerDisplays
+
+    for b in timerDisplays:
+        timerToDisplay=b
+        time.sleep(1)
+
+    timerToDisplay=None
 
 # Init camera and set up default values
 camera            = picamera.PiCamera()
@@ -246,8 +274,27 @@ def takeMyPicture():
     camera.resolution = sizeData[1]
     camera.crop       = (0.0, 0.0, 1.0, 1.0)
 
-while(True):
+def displayCameraOnScreen():
+    stream = io.BytesIO() # Capture into in-memory stream
+    camera.capture(stream, use_video_port=True, format='raw')
+    stream.seek(0)
+    stream.readinto(yuv)  # stream -> YUV buffer
+    stream.close()
+    yuv2rgb.convert(yuv, rgb, sizeData[1][0],
+                sizeData[1][1])
+    img = pygame.image.frombuffer(rgb[0:
+    (sizeData[1][0] * sizeData[1][1] * 3)],
+                              sizeData[1], 'RGB')
 
+    if img is None or img.get_height() < 240: # Letterbox, clear background
+        screen.fill(0)
+    if img:
+        screen.blit(img,
+                ((320 - img.get_width() ) / 2,
+                 (240 - img.get_height()) / 2))
+awaitsForPicture=False
+
+while(True):
 
   for event in pygame.event.get():
     if(event.type is MOUSEBUTTONDOWN):
@@ -260,28 +307,23 @@ while(True):
 
         # If we haven't clicked on a button and "just on the screen"
       if not selected:
-        takeMyPicture()
+        awaitsForPicture=True
+        t = threading.Thread(target=fiveSecs)
+        t.start()
 
 
-  stream = io.BytesIO() # Capture into in-memory stream
-  camera.capture(stream, use_video_port=True, format='raw')
-  stream.seek(0)
-  stream.readinto(yuv)  # stream -> YUV buffer
-  stream.close()
-  yuv2rgb.convert(yuv, rgb, sizeData[1][0],
-      sizeData[1][1])
-  img = pygame.image.frombuffer(rgb[0:
-      (sizeData[1][0] * sizeData[1][1] * 3)],
-      sizeData[1], 'RGB')
-
-  if img is None or img.get_height() < 240: # Letterbox, clear background
-    screen.fill(0)
-  if img:
-    screen.blit(img,
-      ((320 - img.get_width() ) / 2,
-       (240 - img.get_height()) / 2))
+  displayCameraOnScreen()
 
   # Overlay buttons on display and update
   for b in myButtons:
     b.draw(screen)
+
+  if timerToDisplay is not None:
+      timerToDisplay.draw(screen)
+
+  print "Awaits for picture", awaitsForPicture, " timerToDisplay: ", timerToDisplay
+  if timerToDisplay is None and awaitsForPicture is True:
+      awaitsForPicture=False
+      takeMyPicture()
+
   pygame.display.update()
