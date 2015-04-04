@@ -37,7 +37,12 @@ import time
 import yuv2rgb
 from pygame.locals import *
 from subprocess import call  
+import argparse
+import uuid
 
+parser = argparse.ArgumentParser()
+parser.add_argument("-s","--storagepath", help="set the storage path", type=str)
+args = parser.parse_args()
 
 # UI classes ---------------------------------------------------------------
 
@@ -63,6 +68,7 @@ class Icon:
 #  - bounding rect ((X,Y,W,H) in pixels)
 #  - optional background color and/or Icon (or None), always centered
 #  - optional foreground Icon, always centered
+#  - optional text, always centered
 #  - optional single callback function
 #  - optional single value passed to callback
 # Occasionally Buttons are used as a convenience for positioning Icons
@@ -88,6 +94,7 @@ class Button:
 	  self.value      = None # Value passed to callback
 	  self.text       = None
 	  self.renderText = None
+	  self.fontSize   = None
 	  for key, value in kwargs.iteritems():
 	    if   key == 'color': self.color    = value
 	    elif key == 'bg'   : self.bg       = value
@@ -95,8 +102,13 @@ class Button:
 	    elif key == 'cb'   : self.callback = value
 	    elif key == 'value': self.value    = value
 	    elif key == 'text' : self.text     = value
+	    elif key == 'fontSize' : self.fontSize     = value
 	  if self.text:
-	    font = pygame.font.SysFont("Arial",60)
+	    if self.fontSize is not None:
+	      font = pygame.font.SysFont("Arial",self.fontSize)
+	    else:
+	      font = pygame.font.SysFont("Arial",60)
+
 	    self.renderText=font.render(self.text, True, (255,255,255))
 	def selected(self, pos):
 	  x1 = self.rect[0]
@@ -147,7 +159,11 @@ fxMode          =  0      # Image effect; default = Normal
 iconPath        = 'icons' # Subdirectory containing UI bitmaps (PNG format)
 scaled          = None    # pygame Surface w/last-loaded image
 sizeData = [(2592, 1944), (320, 240), (0.0   , 0.0   , 1.0   , 1.0   )] # Large
+storagePath=args.storagepath+"/"
+filePath = storagePath+str(uuid.uuid4())+"_"
+photoCount = 0
 
+print "Will store photos to ", storagePath
 # A fixed list of image effects is used (rather than polling
 # camera.IMAGE_EFFECTS) because the latter contains a few elements
 # that aren't valid (at least in video_port mode) -- e.g. blackboard,
@@ -160,11 +176,13 @@ fxData = [
   'negative', 'colorswap', 'posterise', 'denoise', 'blur', 'film',
   'washedout', 'emboss', 'cartoon', 'solarize' ]
 
+
 # Assorted utility functions -----------------------------------------------
 def setFxMode(n):
-	global fxMode
+	global fxMode,fxLabels,fxLabel
 	fxMode = n
 	camera.image_effect = fxData[fxMode]
+	fxLabel = fxLabels[n]
 
 workingLabel=Button(( 88, 51,157,102))  # 'Working' label (when enabled)
 workingSpinner=Button((148, 110,22, 22))
@@ -215,6 +233,27 @@ pygame.init()
 pygame.mouse.set_visible(False)
 screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
 
+fxLabels = [Button(( 122, 0,75,30),text="Pas d'effet",fontSize=20),
+            Button(( 122, 0,75,30),text="Croquis",fontSize=20),
+            Button(( 122, 0,75,30),text="Stylo",fontSize=20),
+            Button(( 122, 0,75,30),text="Pastel",fontSize=20),
+            Button(( 122, 0,75,30),text="Eau",fontSize=20),
+            Button(( 122, 0,75,30),text="Peinture a l'huile",fontSize=20),
+            Button(( 122, 0,75,30),text="Hatch",fontSize=20),
+            Button(( 122, 0,75,30),text="Negatif",fontSize=20),
+            Button(( 122, 0,75,30),text="Couleurs inversees",fontSize=20),
+            Button(( 122, 0,75,30),text="Poster",fontSize=20),
+            Button(( 122, 0,75,30),text="Denoise",fontSize=20),
+            Button(( 122, 0,75,30),text="Flou",fontSize=20),
+            Button(( 122, 0,75,30),text="Film",fontSize=20),
+            Button(( 122, 0,75,30),text="Delave",fontSize=20),
+            Button(( 122, 0,75,30),text="Emboss",fontSize=20),
+            Button(( 122, 0,75,30),text="Cartoon",fontSize=20),
+            Button(( 122, 0,75,30),text="Solaire",fontSize=20)
+]
+
+fxLabel=fxLabels[0]
+
 timerDisplays = [Button(( 88, 51,157,102),text="5"),
                  Button(( 88, 51,157,102),text="4"),
                  Button(( 88, 51,157,102),text="3"),
@@ -259,7 +298,7 @@ for b in myButtons:
 # Main loop ----------------------------------------------------------------
 
 def takeMyPicture():
-    global busy, Scaled
+    global busy, Scaled, filePath, photoCount
 
     # If no buttons are selected we should really take the picture..
     scaled = None
@@ -267,12 +306,13 @@ def takeMyPicture():
     camera.crop       = sizeData[2]
     t = threading.Thread(target=spinner)
     t.start()
-    camera.capture("test.jpg", use_video_port=False, format='jpeg',
+    camera.capture(filePath+str(photoCount)+".jpeg", use_video_port=False, format='jpeg',
                    thumbnail=None)
     busy=False
     t.join()
     camera.resolution = sizeData[1]
     camera.crop       = (0.0, 0.0, 1.0, 1.0)
+    photoCount+=1
 
 def displayCameraOnScreen():
     stream = io.BytesIO() # Capture into in-memory stream
@@ -314,6 +354,8 @@ while(True):
 
   displayCameraOnScreen()
 
+  fxLabel.draw(screen)
+
   # Overlay buttons on display and update
   for b in myButtons:
     b.draw(screen)
@@ -321,7 +363,7 @@ while(True):
   if timerToDisplay is not None:
       timerToDisplay.draw(screen)
 
-  print "Awaits for picture", awaitsForPicture, " timerToDisplay: ", timerToDisplay
+
   if timerToDisplay is None and awaitsForPicture is True:
       awaitsForPicture=False
       takeMyPicture()
