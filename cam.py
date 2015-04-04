@@ -217,13 +217,6 @@ os.putenv('SDL_FBDEV'      , '/dev/fb1')
 os.putenv('SDL_MOUSEDRV'   , 'TSLIB')
 os.putenv('SDL_MOUSEDEV'   , '/dev/input/touchscreen')
 
-# Get user & group IDs for file & folder creation
-# (Want these to be 'pi' or other user, not root)
-s = os.getenv("SUDO_UID")
-uid = int(s) if s else os.getuid()
-s = os.getenv("SUDO_GID")
-gid = int(s) if s else os.getgid()
-
 # Buffers for viewfinder data
 rgb = bytearray(320 * 240 * 3)
 yuv = bytearray(320 * 240 * 3 / 2)
