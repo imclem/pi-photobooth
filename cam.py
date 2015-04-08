@@ -154,7 +154,16 @@ def fxCallback(n): # Pass 1 (next effect) or -1 (prev effect)
 	global fxMode
 	setFxMode((fxMode + n) % len(fxData))
 
+def printCallBack():
+	global screenMode
+	screenMode=0
+
+def backToNormal():
+	global screenMode
+	screenMode=0
+
 # Global stuff -------------------------------------------------------------
+screenMode = 0
 fxMode          =  0      # Image effect; default = Normal
 iconPath        = 'icons' # Subdirectory containing UI bitmaps (PNG format)
 scaled          = None    # pygame Surface w/last-loaded image
@@ -162,6 +171,7 @@ sizeData = [(2592, 1944), (320, 240), (0.0   , 0.0   , 1.0   , 1.0   )] # Large
 storagePath=args.storagepath+"/"
 filePath = storagePath+str(uuid.uuid4())+"_"
 photoCount = 0
+lastImage = None
 
 print "Will store photos to ", storagePath
 # A fixed list of image effects is used (rather than polling
@@ -172,17 +182,21 @@ print "Will store photos to ", storagePath
 # camera parameters for which there's no GUI yet) -- e.g. saturation,
 # colorbalance, colorpoint.
 fxData = [
-  'none', 'sketch', 'gpen', 'pastel', 'watercolor', 'oilpaint', 'hatch',
-  'negative', 'colorswap', 'posterise', 'denoise', 'blur', 'film',
-  'washedout', 'emboss', 'cartoon', 'solarize' ]
+  'none', 'blackWhite','sketch', 'pastel',
+  'negative','emboss', 'cartoon', 'solarize' ]
 
 
 # Assorted utility functions -----------------------------------------------
 def setFxMode(n):
-	global fxMode,fxLabels,fxLabel
+	global fxMode,screenModes,fxLabels
 	fxMode = n
-	camera.image_effect = fxData[fxMode]
-	fxLabel = fxLabels[n]
+	if fxData[fxMode] is not 'blackWhite':
+	  camera.color_effects=None
+	  camera.image_effect = fxData[fxMode]
+	else:
+	  camera.color_effects=(128,128)
+
+	screenModes[0][0] = fxLabels[n]
 
 workingLabel=Button(( 88, 51,157,102))  # 'Working' label (when enabled)
 workingSpinner=Button((148, 110,22, 22))
@@ -227,25 +241,14 @@ pygame.mouse.set_visible(False)
 screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
 
 fxLabels = [Button(( 122, 0,75,30),text="Pas d'effet",fontSize=20),
+            Button(( 122, 0,75,30),text="Noir et blanc",fontSize=20),
             Button(( 122, 0,75,30),text="Croquis",fontSize=20),
-            Button(( 122, 0,75,30),text="Stylo",fontSize=20),
             Button(( 122, 0,75,30),text="Pastel",fontSize=20),
-            Button(( 122, 0,75,30),text="Eau",fontSize=20),
-            Button(( 122, 0,75,30),text="Peinture a l'huile",fontSize=20),
-            Button(( 122, 0,75,30),text="Hatch",fontSize=20),
             Button(( 122, 0,75,30),text="Negatif",fontSize=20),
-            Button(( 122, 0,75,30),text="Couleurs inversees",fontSize=20),
-            Button(( 122, 0,75,30),text="Poster",fontSize=20),
-            Button(( 122, 0,75,30),text="Denoise",fontSize=20),
-            Button(( 122, 0,75,30),text="Flou",fontSize=20),
-            Button(( 122, 0,75,30),text="Film",fontSize=20),
-            Button(( 122, 0,75,30),text="Delave",fontSize=20),
             Button(( 122, 0,75,30),text="Emboss",fontSize=20),
             Button(( 122, 0,75,30),text="Cartoon",fontSize=20),
             Button(( 122, 0,75,30),text="Solaire",fontSize=20)
 ]
-
-fxLabel=fxLabels[0]
 
 timerDisplays = [Button(( 88, 51,157,102),text="5"),
                  Button(( 88, 51,157,102),text="4"),
@@ -278,20 +281,35 @@ for file in os.listdir(iconPath):
   if fnmatch.fnmatch(file, '*.png'):
     icons.append(Icon(file.split('.')[0]))
 
-myButtons = [Button((  0, 70, 80, 52), bg='prev', cb=fxCallback     , value=-1),
-             Button((240, 70, 80, 52), bg='next', cb=fxCallback     , value= 1)]
-for b in myButtons:
-    for i in icons:
-        if b.bg== i.name:
-            b.iconBg=i
-            b.bg = None
-        if b.fg == i.name:
-            b.iconFg = i
-            b.fg= None
+screenModes = [
+    # Screen mode 0 is effect choosing and taking photos
+    [fxLabels[0],
+     Button((  0, 70, 80, 52), bg='prev', cb=fxCallback     , value=-1),
+             Button((240, 70, 80, 52), bg='next', cb=fxCallback     , value= 1)],
+    # Screen mode 1 is print or not
+    [   Button(( 122, 0,75,50),text="Imprimer ?",fontSize=40),
+        Button((  0, 70, 80, 52), text='oui', fontSize=40, cb=printCallBack),
+        Button((240, 70, 80, 52), text='non', fontSize=40, cb=backToNormal)]
+    ]
+
+for s in screenModes:
+    for b in s:
+        for i in icons:
+            if b.bg== i.name:
+                b.iconBg=i
+                b.bg = None
+            if b.fg == i.name:
+                b.iconFg = i
+                b.fg= None
 # Main loop ----------------------------------------------------------------
+def showLastImage():
+    global lastImage
+    screen.blit(lastImage,
+                ((320 - lastImage.get_width() ) / 2,
+                 (240 - lastImage.get_height()) / 2))
 
 def takeMyPicture():
-    global busy, Scaled, filePath, photoCount
+    global busy, Scaled, filePath, photoCount, screenMode, lastImage
 
     # If no buttons are selected we should really take the picture..
     scaled = None
@@ -302,10 +320,13 @@ def takeMyPicture():
     camera.capture(filePath+str(photoCount)+".jpeg", use_video_port=False, format='jpeg',
                    thumbnail=None)
     busy=False
+    img = pygame.image.load(filePath+str(photoCount)+".jpeg")
+    lastImage = pygame.transform.scale(img, sizeData[1])
     t.join()
     camera.resolution = sizeData[1]
     camera.crop       = (0.0, 0.0, 1.0, 1.0)
     photoCount+=1
+    screenMode=1
 
 def displayCameraOnScreen():
     stream = io.BytesIO() # Capture into in-memory stream
@@ -333,7 +354,7 @@ while(True):
     if(event.type is MOUSEBUTTONDOWN):
       pos = pygame.mouse.get_pos()
       selected=False
-      for b in myButtons:
+      for b in screenModes[screenMode]:
         if b.selected(pos):
           selected=True
           break
@@ -344,13 +365,13 @@ while(True):
         t = threading.Thread(target=fiveSecs)
         t.start()
 
-
-  displayCameraOnScreen()
-
-  fxLabel.draw(screen)
+  if screenMode is 0:
+    displayCameraOnScreen()
+  else:
+    showLastImage()
 
   # Overlay buttons on display and update
-  for b in myButtons:
+  for i,b in enumerate(screenModes[screenMode]):
     b.draw(screen)
 
   if timerToDisplay is not None:
