@@ -165,13 +165,13 @@ def backToNormal():
 # Global stuff -------------------------------------------------------------
 screenMode = 0
 fxMode          =  0      # Image effect; default = Normal
-iconPath        = 'icons' # Subdirectory containing UI bitmaps (PNG format)
 scaled          = None    # pygame Surface w/last-loaded image
 sizeData = [(2592, 1944), (320, 240), (0.0   , 0.0   , 1.0   , 1.0   )] # Large
 storagePath=args.storagepath+"/"
 filePath = storagePath+str(uuid.uuid4())+"_"
 photoCount = 0
 lastImage = None
+iconPath        = 'icons' # Subdirectory containing UI bitmaps (PNG format)
 
 print "Will store photos to ", storagePath
 # A fixed list of image effects is used (rather than polling

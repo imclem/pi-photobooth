@@ -1,0 +1,4 @@
+#!/bin/bash
+CAMDIR=$(dirname $0)
+cd $CAMDIR
+python cam.py -s /tmp 

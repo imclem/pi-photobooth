@@ -1,0 +1,159 @@
+#!/bin/bash 
+# /etc/init.d/photobooth
+
+### BEGIN INIT INFO
+# Provides:          photobooth
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description:  Starts the raspberry pi photobooth
+# Description:       Starts the raspberrypi photobooth
+### END INIT INFO
+
+# Loading path for CMDS
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+#Loading profile to have, for example, JAVA_HOME set
+. /etc/profile
+
+#The service name
+NAME=photobooth
+#THE COMMAND TO LAUNCH
+DAEMON=/opt/photobooth/startphotobooth
+#File where log will be placed (/dev/null if empty)
+LOGFILE=/var/log/$NAME
+#File where pid will be store, leave as is if you don't know what you do
+PIDFILE=/var/run/$NAME.pid
+#User who will be owner of the process, root if empty
+USER=
+
+processRunning() {
+		kill -0 $1 &> /dev/null
+		if [ "$?" == "0" ]
+		then
+			echo 0 
+		else
+			if [ -f $PIDFILE ]
+			then 
+				rm $PIDFILE
+			fi
+			echo 1
+		fi
+}
+
+daemonRunning() {
+	if [ -f $PIDFILE ]
+	then
+		echo $(processRunning $(cat $PIDFILE))
+	else
+		echo 1 
+	fi
+}
+
+waitForCompletion() {
+
+	echo "Service $NAME is being stopped"
+	while [ $(daemonRunning) == 0 ]
+	do
+		sleep 1
+	done
+}
+
+start() {
+	CMD="nohup "
+	if [ $(daemonRunning) == 1 ]
+	then
+		if [ -x $DAEMON ]
+		then
+			CMD="$CMD $DAEMON"
+			if [ "$LOGFILE" != ""  ]
+			then
+				if [ ! -f $LOGFILE ]
+				then
+					touch $LOGFILE
+					if [ "$USER" != "" ]
+					then
+						chown $USER:$(id -gn $USER) $LOGFILE
+					fi
+				fi
+				CMD="$CMD 1>> $LOGFILE 2>>$LOGFILE"
+			else
+				CMD="$CMD &> /dev/null"
+			fi
+			CMD="$CMD &"
+			CMD="$CMD echo \$!"
+			if [ "$USER" != "" ]
+			then
+				CURRPID=$(su $USER -c "$CMD")
+			else
+				CURRPID=$(su -c "$CMD")
+			fi
+			echo $CURRPID > $PIDFILE
+			echo -e "Service $NAME \e[0;32mSTARTED\e[0m"
+		else
+			echo "The daemon file $DAEMON is not executable"
+		fi
+	else
+		echo -e "Service $NAME already running, pid: \e[1;34m$(cat $PIDFILE)\e[0m"
+	fi
+
+}
+# Restart the service FOO
+stop() {
+	CURRPID=$(cat $PIDFILE)
+	if [ $(daemonRunning) == 0 ]
+	then 
+			
+			kill $CURRPID
+			waitForCompletion
+			echo -e "Service $NAME : \e[0;31mSTOPPED\e[0m"
+	else
+		echo "Service $NAME is not currently running."
+	fi
+}
+
+forcestop() {
+	CURRPID=$(cat $PIDFILE)
+	if [ $(daemonRunning) == 0 ]
+	then 
+			
+			kill -9 $CURRPID
+			waitForCompletion
+			echo -e "Service $NAME : \e[0;31mSTOPPED\e[0m"
+	else
+		echo "Service $NAME is not currently running."
+	fi
+}
+
+### main logic ###
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  status)
+        if [ $(daemonRunning) == "0" ]
+		then 
+			echo "Service $NAME running under pid $(cat $PIDFILE)"
+		else
+			echo "Service is stopped"
+		fi
+        ;;
+  reload)
+        stop
+        start
+        ;;
+  force-reload)
+        forcestop
+        start
+        ;;
+  force-stop)
+        forcestop
+        ;;
+  *)
+        echo $"Usage: $0 {start|stop|reload|force-reload|force-stop|status}"
+        exit 1
+esac
+exit 0
