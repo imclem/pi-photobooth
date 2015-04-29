@@ -39,6 +39,8 @@ from pygame.locals import *
 from subprocess import call  
 import argparse
 import uuid
+import bluetooth
+from PyOBEX.client import BrowserClient
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-s","--storagepath", help="set the storage path", type=str)
@@ -95,6 +97,7 @@ class Button:
 	  self.text       = None
 	  self.renderText = None
 	  self.fontSize   = None
+	  self.foreGroundColor   = None
 	  for key, value in kwargs.iteritems():
 	    if   key == 'color': self.color    = value
 	    elif key == 'bg'   : self.bg       = value
@@ -103,13 +106,19 @@ class Button:
 	    elif key == 'value': self.value    = value
 	    elif key == 'text' : self.text     = value
 	    elif key == 'fontSize' : self.fontSize     = value
+	    elif key == 'foreGroundColor' : self.foreGroundColor     = value
 	  if self.text:
 	    if self.fontSize is not None:
 	      font = pygame.font.SysFont("Arial",self.fontSize)
 	    else:
 	      font = pygame.font.SysFont("Arial",60)
 
-	    self.renderText=font.render(self.text, True, (255,255,255))
+	    if self.foreGroundColor is not None:
+	      color = self.foreGroundColor
+	    else:
+	      color = (255,255,255)
+
+	    self.renderText=font.render(self.text, True, color)
 	def selected(self, pos):
 	  x1 = self.rect[0]
 	  y1 = self.rect[1]
@@ -155,8 +164,34 @@ def fxCallback(n): # Pass 1 (next effect) or -1 (prev effect)
 	setFxMode((fxMode + n) % len(fxData))
 
 def printCallBack():
-	global screenMode
+	global screenMode,lastImageFullPath,printCount,screen,screenModes
+
+	showLastImage()
+	screenModes[2][0].draw(screen)
+	printThread = threading.Thread(target=printImage)
+	printThread.start()
+	printInProgress = threading.Thread(target=thirtySecsPrintInProgress)
+	printInProgress.start()
+
+	screenMode=2
+	printCount-=1
+	print "Print count ", printCount
+
+def printImage():
+	global lastImageFullPath
+	client = BrowserClient('08:EF:3B:42:F4:49',4)
+	connectResponse = client.connect()
+
+	print connectResponse
+
+	print client.put("photo.jpg",open(lastImageFullPath).read())
+	print client.disconnect()
+
+def noPaperCallBack():
+	global printCount,screenMode
 	screenMode=0
+	printCount=10
+	print "Print count ", printCount
 
 def backToNormal():
 	global screenMode
@@ -171,6 +206,7 @@ storagePath=args.storagepath+"/"
 filePath = storagePath+str(uuid.uuid4())+"_"
 photoCount = 0
 lastImage = None
+lastImageFullPath=""
 iconPath        = 'icons' # Subdirectory containing UI bitmaps (PNG format)
 
 print "Will store photos to ", storagePath
@@ -182,8 +218,7 @@ print "Will store photos to ", storagePath
 # camera parameters for which there's no GUI yet) -- e.g. saturation,
 # colorbalance, colorpoint.
 fxData = [
-  'none', 'blackWhite','sketch', 'pastel',
-  'negative','emboss', 'cartoon', 'solarize' ]
+  'none', 'blackWhite','sketch', 'pastel', 'cartoon' ]
 
 
 # Assorted utility functions -----------------------------------------------
@@ -195,6 +230,7 @@ def setFxMode(n):
 	  camera.image_effect = fxData[fxMode]
 	else:
 	  camera.color_effects=(128,128)
+	  camera.image_effect='none'
 
 	screenModes[0][0] = fxLabels[n]
 
@@ -239,15 +275,12 @@ yuv = bytearray(320 * 240 * 3 / 2)
 pygame.init()
 pygame.mouse.set_visible(False)
 screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
-
+printCount=10
 fxLabels = [Button(( 122, 0,75,30),text="Pas d'effet",fontSize=20),
             Button(( 122, 0,75,30),text="Noir et blanc",fontSize=20),
             Button(( 122, 0,75,30),text="Croquis",fontSize=20),
             Button(( 122, 0,75,30),text="Pastel",fontSize=20),
-            Button(( 122, 0,75,30),text="Negatif",fontSize=20),
-            Button(( 122, 0,75,30),text="Emboss",fontSize=20),
-            Button(( 122, 0,75,30),text="Cartoon",fontSize=20),
-            Button(( 122, 0,75,30),text="Solaire",fontSize=20)
+            Button(( 122, 0,75,30),text="Cartoon",fontSize=20)
 ]
 
 timerDisplays = [Button(( 88, 51,157,102),text="5"),
@@ -267,6 +300,14 @@ def fiveSecs():
 
     timerToDisplay=None
 
+def thirtySecsPrintInProgress():
+    global screenMode,printCount
+
+    time.sleep(30)
+    if printCount is 0:
+        screenMode=3
+    else:
+        screenMode=0
 # Init camera and set up default values
 camera            = picamera.PiCamera()
 atexit.register(camera.close)
@@ -287,9 +328,13 @@ screenModes = [
      Button((  0, 70, 80, 52), bg='prev', cb=fxCallback     , value=-1),
              Button((240, 70, 80, 52), bg='next', cb=fxCallback     , value= 1)],
     # Screen mode 1 is print or not
-    [   Button(( 122, 0,75,50),text="Imprimer ?",fontSize=40),
-        Button((  0, 70, 80, 52), text='oui', fontSize=40, cb=printCallBack),
-        Button((240, 70, 80, 52), text='non', fontSize=40, cb=backToNormal)]
+    [   Button(( 122, 0,75,50),text="Imprimer ?",fontSize=40,foreGroundColor=(255,0,0)),
+        Button((  0, 70, 80, 52), text='oui', fontSize=40, cb=printCallBack,foreGroundColor=(255,0,0)),
+        Button((240, 70, 80, 52), text='non', fontSize=40, cb=backToNormal,foreGroundColor=(255,0,0))],
+    [Button(( 122, 70,75,50),text="Impression en cours...",fontSize=30,foreGroundColor=(255,0,0))],
+    [Button(( 122, 50,75,50),text="Plus de papier",fontSize=30,cb=noPaperCallBack,foreGroundColor=(255,0,0)),
+     Button(( 122, 90,75,50),text="Appelez",fontSize=30,cb=noPaperCallBack,foreGroundColor=(255,0,0)),
+     Button(( 122, 130,75,50),text="Steph ou Clem",fontSize=30,cb=noPaperCallBack,foreGroundColor=(255,0,0))]
     ]
 
 for s in screenModes:
@@ -309,7 +354,7 @@ def showLastImage():
                  (240 - lastImage.get_height()) / 2))
 
 def takeMyPicture():
-    global busy, Scaled, filePath, photoCount, screenMode, lastImage
+    global busy, Scaled, filePath, photoCount, screenMode, lastImage, lastImageFullPath
 
     # If no buttons are selected we should really take the picture..
     scaled = None
@@ -317,10 +362,11 @@ def takeMyPicture():
     camera.crop       = sizeData[2]
     t = threading.Thread(target=spinner)
     t.start()
-    camera.capture(filePath+str(photoCount)+".jpeg", use_video_port=False, format='jpeg',
+    lastImageFullPath=filePath+str(photoCount)+".jpg"
+    camera.capture(lastImageFullPath, use_video_port=False, format='jpeg',
                    thumbnail=None)
     busy=False
-    img = pygame.image.load(filePath+str(photoCount)+".jpeg")
+    img = pygame.image.load(lastImageFullPath)
     lastImage = pygame.transform.scale(img, sizeData[1])
     t.join()
     camera.resolution = sizeData[1]
@@ -360,10 +406,12 @@ while(True):
           break
 
         # If we haven't clicked on a button and "just on the screen"
-      if not selected:
+      if not selected and screenMode is 0:
         awaitsForPicture=True
         t = threading.Thread(target=fiveSecs)
         t.start()
+      elif not selected and screenMode is 3:
+          noPaperCallBack()
 
   if screenMode is 0:
     displayCameraOnScreen()
